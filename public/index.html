@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#163a34">
+  <title>Durham Coast Incident Hub</title>
+  <link rel="preconnect" href="https://unpkg.com">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div id="loginOverlay" class="overlay hidden">
+    <div class="login-card">
+      <div class="brand-mark">DC</div>
+      <h1>Durham Coast Incident Hub</h1>
+      <p class="muted">Shared incident logging for partner organisations and stakeholders.</p>
+      <label>Recorder name<input id="loginName" autocomplete="name" placeholder="Your name"></label>
+      <label>Organisation<input id="loginOrg" list="orgList" placeholder="Organisation"></label>
+      <datalist id="orgList">
+        <option>Durham County Council</option>
+        <option>Durham Wildlife Trust</option>
+        <option>Durham Constabulary</option>
+        <option>Environment Agency</option>
+        <option>Natural England</option>
+        <option>Parish / Town Council</option>
+        <option>Landowner / Estate</option>
+        <option>Community Group</option>
+      </datalist>
+      <label id="accessCodeWrap">Access code<input id="loginCode" type="password" autocomplete="current-password" placeholder="Shared access code"></label>
+      <button id="loginBtn" class="primary wide">Enter system</button>
+      <p id="loginMsg" class="message"></p>
+      <p class="privacy-note">Only record personal information when it is necessary and proportionate for the incident response. Do not use this system as a substitute for emergency reporting.</p>
+    </div>
+  </div>
+
+  <header class="topbar">
+    <div>
+      <span class="eyebrow">DURHAM COAST</span>
+      <h1>Incident Hub</h1>
+    </div>
+    <button id="profileBtn" class="profile-button" title="Change profile"><span id="profileInitials">?</span></button>
+  </header>
+
+  <main>
+    <section id="view-dashboard" class="view active">
+      <div class="hero">
+        <div>
+          <span class="eyebrow">UNIFIED PARTNER LOG</span>
+          <h2>Shared picture of incidents across the coast</h2>
+          <p>Log once, update collectively and retain a consistent spatial record for follow-up and reporting.</p>
+        </div>
+        <button class="primary hero-action" data-nav="log">+ Log incident</button>
+      </div>
+
+      <div class="stats-grid">
+        <div class="stat-card"><span>Open</span><strong id="statOpen">0</strong></div>
+        <div class="stat-card"><span>High / critical</span><strong id="statHigh">0</strong></div>
+        <div class="stat-card"><span>Last 30 days</span><strong id="stat30">0</strong></div>
+        <div class="stat-card"><span>Total logged</span><strong id="statTotal">0</strong></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-heading">
+          <div><span class="eyebrow">RECENT ACTIVITY</span><h3>Latest incidents</h3></div>
+          <button class="text-button" data-nav="records">View all</button>
+        </div>
+        <div id="recentList" class="incident-list empty-state">No incidents loaded.</div>
+      </div>
+    </section>
+
+    <section id="view-log" class="view">
+      <div class="page-heading">
+        <button class="back-button" data-nav="dashboard">←</button>
+        <div><span class="eyebrow">NEW RECORD</span><h2>Log an incident</h2><p>Core details first. Optional fields can be added where useful.</p></div>
+      </div>
+
+      <form id="incidentForm" novalidate>
+        <div class="form-card">
+          <div class="step-heading"><span class="step-number">1</span><div><h3>What happened?</h3><p>Select the closest category, then add a concise factual description.</p></div></div>
+          <div id="categoryGrid" class="category-grid"></div>
+          <div class="two-col">
+            <label>Subcategory<select id="subcategory"><option value="">Select category first</option></select></label>
+            <label>Severity<select id="severity"><option>Low</option><option selected>Medium</option><option>High</option><option>Critical</option></select></label>
+          </div>
+          <label>Incident description <span class="required">required</span><textarea id="description" rows="4" placeholder="What was observed? Keep this factual and avoid unnecessary personal information."></textarea></label>
+        </div>
+
+        <div class="form-card">
+          <div class="step-heading"><span class="step-number">2</span><div><h3>Where and when?</h3><p>Use GPS in the field or place the marker manually.</p></div></div>
+          <div class="two-col">
+            <label>Date and time<input id="occurredAt" type="datetime-local"></label>
+            <label>Time certainty<select id="timePrecision"><option>Exact</option><option>Approximate</option><option>Unknown time</option></select></label>
+          </div>
+          <div class="two-col">
+            <label>Site / area<input id="site" list="siteList" placeholder="e.g. Blackhall Rocks"></label>
+            <label>Location certainty<select id="locationPrecision"><option>Exact point</option><option>Approximate area</option><option>General site only</option></select></label>
+          </div>
+          <datalist id="siteList"><option>Seaham</option><option>Noses Point</option><option>Hawthorn</option><option>Easington</option><option>Horden</option><option>Blackhall Rocks</option><option>Blackhall Colliery</option><option>Crimdon</option></datalist>
+          <label>Location description<input id="locationDescription" placeholder="Access point, landmark, path or other useful detail"></label>
+          <div class="location-toolbar">
+            <button type="button" id="gpsBtn" class="secondary">◎ Use my GPS</button>
+            <span id="gpsStatus" class="muted">Tap the map to place the incident.</span>
+          </div>
+          <div id="entryMap" class="entry-map"></div>
+          <div class="coord-row"><span id="coordText">No location selected</span><span id="accuracyText"></span></div>
+        </div>
+
+        <div class="form-card">
+          <div class="step-heading"><span class="step-number">3</span><div><h3>Impact and evidence</h3><p>Record operationally useful impact information. These fields are optional.</p></div></div>
+          <div class="toggle-grid">
+            <label class="check-card"><input id="peopleAtRisk" type="checkbox"><span><strong>People at risk</strong><small>Threat, injury or immediate safety concern</small></span></label>
+            <label class="check-card"><input id="environmentalDamage" type="checkbox"><span><strong>Environmental damage</strong><small>Habitat, wildlife or pollution impact</small></span></label>
+            <label class="check-card"><input id="infrastructureDamage" type="checkbox"><span><strong>Infrastructure damage</strong><small>Barrier, gate, sign, path or asset</small></span></label>
+            <label class="check-card"><input id="designatedSiteImpact" type="checkbox"><span><strong>Designated site impact</strong><small>Known or suspected protected-site impact</small></span></label>
+          </div>
+          <label>Habitat / environmental impact<textarea id="habitatAffected" rows="2" placeholder="What was affected and how?"></textarea></label>
+          <label class="check-inline"><input id="vehicleInvolved" type="checkbox"> Vehicle involved</label>
+          <div id="vehicleFields" class="conditional hidden">
+            <div class="two-col">
+              <label>Vehicle registration <span class="sensitive-pill">restricted</span><input id="vehicleRegistration" placeholder="Only where necessary"></label>
+              <label>Vehicle description <span class="sensitive-pill">restricted</span><input id="vehicleDescription" placeholder="Type, colour, distinguishing features"></label>
+            </div>
+          </div>
+          <label>Photos <span class="optional">up to 3</span><input id="photos" type="file" accept="image/*" capture="environment" multiple></label>
+          <div id="photoPreview" class="photo-preview"></div>
+          <details class="sensitive-box"><summary>Restricted personal / sensitive information</summary><p>Use only where necessary for a legitimate incident-management purpose. Avoid speculative descriptions.</p><label>Identifiable person details<textarea id="personDetails" rows="2"></textarea></label><label>Restricted notes<textarea id="sensitiveNotes" rows="2"></textarea></label></details>
+        </div>
+
+        <div class="form-card">
+          <div class="step-heading"><span class="step-number">4</span><div><h3>Reporting and follow-up</h3><p>Connect this record to partner actions and other systems.</p></div></div>
+          <div class="two-col">
+            <label>Source<select id="sourceType"><option>Staff / partner observation</option><option>Member of public</option><option>Volunteer / community group</option><option>CCTV / camera</option><option>Police / enforcement report</option><option>Other partner referral</option></select></label>
+            <label>Status<select id="status"><option>New</option><option>Reviewed</option><option>Assigned</option><option>Action in progress</option><option>Monitoring</option><option>Closed</option></select></label>
+          </div>
+          <div class="two-col"><label>Police / crime reference<input id="policeRef"></label><label>Other partner reference<input id="partnerRef" placeholder="CRM, case or work-order reference"></label></div>
+          <div class="two-col"><label>Lead organisation<input id="leadOrg" list="orgList"></label><label>Assigned to<input id="assignedTo" placeholder="Team or named contact"></label></div>
+          <label>Linked incident reference<input id="linkedIncidentRef" placeholder="e.g. DCA-2026-00042"></label>
+          <div class="two-col"><label class="check-inline"><input id="followUpRequired" type="checkbox"> Follow-up required</label><label id="followUpDateWrap" class="hidden">Follow-up date<input id="followUpDate" type="date"></label></div>
+          <label>Tags<input id="tags" placeholder="Optional keywords, separated by commas"></label>
+        </div>
+
+        <div id="duplicateWarning" class="warning-box hidden"></div>
+        <div class="submit-bar">
+          <button type="button" class="secondary" id="resetBtn">Clear</button>
+          <button type="submit" class="primary" id="saveBtn">Save incident</button>
+        </div>
+        <p id="formMsg" class="message"></p>
+      </form>
+    </section>
+
+    <section id="view-records" class="view">
+      <div class="page-heading"><div><span class="eyebrow">SHARED LOG</span><h2>Incidents</h2><p>Filter, map and update the collective record.</p></div></div>
+      <div class="filter-panel">
+        <input id="filterQ" placeholder="Search reference, site, description or organisation">
+        <select id="filterStatus"><option value="">All statuses</option><option>New</option><option>Reviewed</option><option>Assigned</option><option>Action in progress</option><option>Monitoring</option><option>Closed</option></select>
+        <select id="filterCategory"><option value="">All categories</option></select>
+        <input id="filterFrom" type="date" title="From date"><input id="filterTo" type="date" title="To date">
+        <button id="applyFilters" class="secondary">Apply</button>
+      </div>
+      <div class="records-toolbar"><span id="recordCount">0 incidents</span><div><button id="csvBtn" class="text-button">Export CSV</button><button id="geoBtn" class="text-button">Export GeoJSON</button></div></div>
+      <div id="recordsMap" class="records-map"></div>
+      <div id="recordsList" class="incident-list"></div>
+    </section>
+  </main>
+
+  <div id="detailDrawer" class="drawer hidden"><div class="drawer-backdrop" data-close-drawer></div><div class="drawer-panel"><button class="drawer-close" data-close-drawer>×</button><div id="drawerContent"></div></div></div>
+
+  <nav class="bottom-nav">
+    <button data-nav="dashboard" class="active"><span>⌂</span>Overview</button>
+    <button data-nav="log" class="log-nav"><span>＋</span>Log</button>
+    <button data-nav="records"><span>◉</span>Map & records</button>
+  </nav>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>
