@@ -80,6 +80,11 @@
     'Substance misuse':'◌','Other':'…'
   };
 
+  const countyDurhamBounds = L.latLngBounds(
+    [54.43, -2.35],
+    [55.08, -1.12]
+  );
+
   function publicIcon(category) {
     const symbol = categorySymbols[category] || '•';
     return L.divIcon({
@@ -98,6 +103,15 @@
     recordsMap.doubleClickZoom?.disable();
     recordsMap.boxZoom?.disable();
     recordsMap.keyboard?.disable();
+  }
+
+  function setPublicCountyDurhamView() {
+    if (!recordsMap) return;
+    recordsMap.fitBounds(countyDurhamBounds, {
+      padding: [12, 12],
+      maxZoom: 9,
+      animate: false
+    });
   }
 
   function enableAdminMapZoom() {
@@ -121,12 +135,10 @@
 
     disablePublicMapZoom();
     recordLayer.clearLayers();
-    const points = [];
 
     incidents.forEach(i => {
       const lat = Number(i.latitude), lng = Number(i.longitude);
       if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
-      points.push([lat,lng]);
       L.circle([lat,lng], {
         radius: 5000,
         interactive: false,
@@ -138,7 +150,9 @@
       marker.bindPopup(`<strong>${esc(i.category || 'Incident')}</strong><br><small>Generalised area only. This symbol is deliberately displaced from the submitted location; exact coordinates are restricted to administrators.</small>`);
     });
 
-    if (points.length) recordsMap.fitBounds(L.latLngBounds(points).pad(.25), { maxZoom: 9 });
+    // Public users always open on a useful County Durham extent rather than
+    // a world view or a view tightly fitted to the deliberately displaced points.
+    setPublicCountyDurhamView();
     disablePublicMapZoom();
 
     const panel = document.querySelector('#view-records .records-toolbar');
@@ -146,7 +160,7 @@
       const notice = document.createElement('div');
       notice.id = 'publicMapPrivacyNotice';
       notice.className = 'public-map-notice';
-      notice.innerHTML = '<strong>Privacy-protected map:</strong> non-admin symbols are deliberately displaced by several kilometres and represent only a broad area. Pinch, wheel and double-click zoom are disabled here. The precise submitted location is available only after admin login.';
+      notice.innerHTML = '<strong>Privacy-protected map:</strong> non-admin symbols are deliberately displaced by several kilometres and represent only a broad area. The public map opens at County Durham scale and detailed zoom is disabled. The precise submitted location is available only after admin login.';
       panel.insertAdjacentElement('afterend', notice);
     }
     return result;
@@ -166,7 +180,10 @@
   const existingExitAdmin = exitAdmin;
   exitAdmin = function(message='') {
     const result = existingExitAdmin(message);
-    disablePublicMapZoom();
+    setTimeout(() => {
+      setPublicCountyDurhamView();
+      disablePublicMapZoom();
+    }, 0);
     return result;
   };
 })();
