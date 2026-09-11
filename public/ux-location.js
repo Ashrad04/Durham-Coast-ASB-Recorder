@@ -1,29 +1,64 @@
 (() => {
+  const DRAFT_KEY = 'dca_incident_draft_v3';
+  const DRAFT_MAX_AGE = 7 * 24 * 60 * 60 * 1000;
+  const validViews = ['dashboard', 'log', 'records'];
+
   let currentView = document.querySelector('.view.active')?.id?.replace('view-', '') || 'dashboard';
   let draftDirty = false;
-  let suppressHistory = false;
+  let suppressGuard = false;
   let drawerHistoryOpen = false;
+  let detailMap = null;
+  let leaveModalOpen = false;
+  let saveTimer = null;
 
-  const originalNav = nav;
-  const originalResetForm = resetForm;
-  const originalSetEntryLocation = setEntryLocation;
-  const originalSelectCategory = selectCategory;
-  const originalOpenIncident = openIncident;
+  const baseNav = nav;
+  const baseResetForm = resetForm;
+  const baseSetEntryLocation = setEntryLocation;
+  const baseSelectCategory = selectCategory;
+  const baseOpenIncident = openIncident;
+  const baseRenderRecords = renderRecords;
+
+  const categoryIcons = {
+    'Vehicles / off-road use': '🚙',
+    'Camping / fires': '🔥',
+    'Fly-tipping / waste': '🗑',
+    'Vandalism / damage': '🛠',
+    'Environmental damage': '🌿',
+    'Unauthorised access': '⛔',
+    'Dog-related issue': '🐕',
+    'Public order / threatening behaviour': '⚠',
+    'Substance misuse': '◌',
+    'Other': '…'
+  };
 
   function addUxStyles() {
     const style = document.createElement('style');
     style.textContent = `
       .location-formats{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;font-size:12px;color:#52645f}
-      .location-format-chip{background:#f5f8f7;border:1px solid #dfe7e3;border-radius:10px;padding:7px 9px}
+      .location-format-chip{background:#f5f8f7;border:1px solid #dfe7e3;border-radius:10px;padding:8px 10px}
       .location-format-chip strong{color:#17302b}
       .location-reference-panel{margin:14px 0;padding:14px;background:#f5f8f7;border:1px solid #dfe7e3;border-radius:12px}
       .location-reference-panel h3{margin:0 0 8px}
       .location-reference-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-      .location-reference-item{background:#fff;border:1px solid #e4ebe7;border-radius:10px;padding:10px}
+      .location-reference-item{background:#fff;border:1px solid #e4ebe7;border-radius:10px;padding:10px;min-width:0}
       .location-reference-item span{display:block;color:#667871;font-size:11px;font-weight:750;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px}
       .location-reference-item strong{font-size:14px;color:#17302b;word-break:break-word}
-      .location-reference-item a{display:inline-block;margin-top:6px;font-size:12px}
-      @media(max-width:600px){.location-reference-grid{grid-template-columns:1fr}}
+      .location-reference-item small{display:block;color:#667871;margin-top:5px;line-height:1.4}
+      .location-actions{display:flex;gap:7px;flex-wrap:wrap;margin-top:8px}
+      .location-actions button,.location-actions a{border:1px solid #cfdad5;background:#fff;color:#174d43;border-radius:9px;padding:7px 9px;font-weight:750;font-size:12px;text-decoration:none}
+      .admin-detail-map{height:250px;border-radius:12px;overflow:hidden;border:1px solid #dfe7e3;margin:10px 0}
+      .location-audit-note{font-size:12px;color:#667871;line-height:1.45;margin-top:8px}
+      .incident-map-icon{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:#fff;border:2px solid #174d43;box-shadow:0 2px 8px rgba(0,0,0,.24);font-size:18px;line-height:1}
+      .incident-map-icon.approx{border-style:dashed;opacity:.9}
+      .incident-icon-wrapper{background:transparent!important;border:0!important}
+      .ux-modal-overlay{position:fixed;inset:0;z-index:3200;background:rgba(8,25,21,.72);display:grid;place-items:center;padding:18px;backdrop-filter:blur(4px)}
+      .ux-modal{width:min(520px,100%);background:#fff;border-radius:18px;padding:22px;box-shadow:0 30px 80px rgba(0,0,0,.28)}
+      .ux-modal h2{margin:0 0 8px}.ux-modal p{color:#52645f;line-height:1.5;margin:0 0 16px}
+      .ux-modal-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+      .ux-modal-actions button{border-radius:10px;padding:10px 13px;font-weight:800}
+      .draft-badge{display:inline-block;background:#edf5f2;color:#174d43;border:1px solid #c9ded7;border-radius:999px;padding:5px 8px;font-size:11px;font-weight:800;margin-bottom:10px}
+      .save-confirm-ref{font-size:21px;font-weight:900;color:#174d43;background:#edf5f2;border-radius:12px;padding:12px;text-align:center;margin:12px 0}
+      @media(max-width:600px){.location-reference-grid{grid-template-columns:1fr}.ux-modal-actions{flex-direction:column-reverse}.ux-modal-actions button{width:100%}}
     `;
     document.head.appendChild(style);
   }
@@ -32,94 +67,228 @@
     return document.querySelector('.view.active')?.id?.replace('view-', '') || currentView || 'dashboard';
   }
 
-  function formHasMeaningfulInput() {
-    if (draftDirty) return true;
-    if (selectedCategory || entryLocation || evidence?.length) return true;
-    const form = $('incidentForm');
-    if (!form) return false;
+  function iconForCategory(category) {
+    return categoryIcons[category] || '•';
+  }
+
+  function leafletCategoryIcon(category, approximate = false) {
+    return L.divIcon({
+      className: 'incident-icon-wrapper',
+      html: `<div class="incident-map-icon${approximate ? ' approx' : ''}">${esc(iconForCategory(category))}</div>`,
+      iconSize: [34, 34],
+      iconAnchor: [17, 17],
+      popupAnchor: [0, -17]
+    });
+  }
+
+  function showModal({ title, body, buttons = [], badge = '' }) {
+    document.getElementById('uxModalOverlay')?.remove();
+    const overlay = document.createElement('div');
+    overlay.id = 'uxModalOverlay';
+    overlay.className = 'ux-modal-overlay';
+    overlay.innerHTML = `<div class="ux-modal">${badge ? `<div class="draft-badge">${esc(badge)}</div>` : ''}<h2>${esc(title)}</h2><div class="ux-modal-body">${body}</div><div class="ux-modal-actions"></div></div>`;
+    const actions = overlay.querySelector('.ux-modal-actions');
+    buttons.forEach(btn => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = btn.className || 'secondary';
+      b.textContent = btn.label;
+      b.onclick = () => btn.onClick?.(overlay);
+      actions.appendChild(b);
+    });
+    document.body.appendChild(overlay);
+    return overlay;
+  }
+
+  function closeModal() {
+    document.getElementById('uxModalOverlay')?.remove();
+    leaveModalOpen = false;
+  }
+
+  function meaningfulText() {
     const ids = ['description','site','locationDescription','habitatAffected','vehicleRegistration','vehicleDescription','personDetails','sensitiveNotes','policeRef','partnerRef','assignedTo','linkedIncidentRef','tags'];
     return ids.some(id => $(id)?.value?.trim());
   }
 
-  function confirmLeaveDraft() {
-    if (!formHasMeaningfulInput()) return true;
-    return window.confirm('You have an incident form in progress. Leave this screen without saving? Your draft will remain only while this page stays open.');
+  function formHasMeaningfulInput() {
+    if (draftDirty || selectedCategory || entryLocation || evidence?.length) return true;
+    if (meaningfulText()) return true;
+    const checks = ['peopleAtRisk','environmentalDamage','infrastructureDamage','designatedSiteImpact','vehicleInvolved','followUpRequired'];
+    return checks.some(id => $(id)?.checked);
   }
 
-  function navigateView(name, { fromHistory = false, replace = false } = {}) {
-    const before = activeViewName();
-    if (before === 'log' && name !== 'log' && !suppressHistory && !confirmLeaveDraft()) return false;
+  function serialiseDraft() {
+    const form = $('incidentForm');
+    if (!form || !formHasMeaningfulInput()) return null;
+    const fields = {};
+    form.querySelectorAll('input,select,textarea').forEach(el => {
+      if (!el.id || ['file','button','submit'].includes(el.type)) return;
+      fields[el.id] = (el.type === 'checkbox' || el.type === 'radio') ? Boolean(el.checked) : el.value;
+    });
+    return {
+      version: 3,
+      saved_at: Date.now(),
+      category: selectedCategory || '',
+      location: entryLocation ? { ...entryLocation } : null,
+      fields
+    };
+  }
 
-    originalNav(name);
-    currentView = name;
+  function saveDraftNow() {
+    try {
+      const draft = serialiseDraft();
+      if (draft) localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+      else localStorage.removeItem(DRAFT_KEY);
+    } catch {}
+  }
 
-    if (!fromHistory) {
-      const state = { ...(history.state || {}), dcaView: name, dcaDrawer: false };
-      const hash = name === 'dashboard' ? location.pathname + location.search : `#${name}`;
-      if (replace) history.replaceState(state, '', hash);
-      else if (history.state?.dcaView !== name || history.state?.dcaDrawer) history.pushState(state, '', hash);
+  function scheduleDraftSave() {
+    draftDirty = true;
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(saveDraftNow, 250);
+  }
+
+  function clearDraft() {
+    clearTimeout(saveTimer);
+    try { localStorage.removeItem(DRAFT_KEY); } catch {}
+  }
+
+  function readDraft() {
+    try {
+      const d = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null');
+      if (!d || !d.saved_at || Date.now() - Number(d.saved_at) > DRAFT_MAX_AGE) {
+        localStorage.removeItem(DRAFT_KEY);
+        return null;
+      }
+      return d;
+    } catch { return null; }
+  }
+
+  function restoreDraft(draft) {
+    if (!draft) return;
+    suppressGuard = true;
+    try {
+      baseResetForm();
+      if (draft.category) baseSelectCategory(draft.category);
+      const fields = draft.fields || {};
+      Object.entries(fields).forEach(([id, value]) => {
+        const el = $(id);
+        if (!el || el.type === 'file') return;
+        if (el.type === 'checkbox' || el.type === 'radio') el.checked = Boolean(value);
+        else el.value = value ?? '';
+      });
+      if (draft.location && Number.isFinite(Number(draft.location.latitude)) && Number.isFinite(Number(draft.location.longitude))) {
+        baseSetEntryLocation(Number(draft.location.latitude), Number(draft.location.longitude), draft.location.accuracy_m ?? null, true);
+        renderEntryGridReference(Number(draft.location.latitude), Number(draft.location.longitude), draft.location.accuracy_m ?? null);
+      }
+      $('vehicleFields')?.classList.toggle('hidden', !$('vehicleInvolved')?.checked);
+      $('followUpDateWrap')?.classList.toggle('hidden', !$('followUpRequired')?.checked);
+      draftDirty = true;
+    } finally { suppressGuard = false; }
+  }
+
+  function performNavigation(name, { replace = false, push = true } = {}) {
+    if (!validViews.includes(name)) name = 'dashboard';
+    suppressGuard = true;
+    try {
+      baseNav(name);
+      currentView = name;
+      const state = { dcaView: name, dcaDrawer: false };
+      const url = name === 'dashboard' ? location.pathname + location.search : `#${name}`;
+      if (replace) history.replaceState(state, '', url);
+      else if (push && (history.state?.dcaView !== name || history.state?.dcaDrawer)) history.pushState(state, '', url);
+    } finally { suppressGuard = false; }
+  }
+
+  function discardCurrentDraft() {
+    suppressGuard = true;
+    try {
+      clearDraft();
+      baseResetForm();
+      draftDirty = false;
+      const box = $('entryGridReference');
+      if (box) box.textContent = '—';
+    } finally { suppressGuard = false; }
+  }
+
+  function requestLeave(target, fromPopState = false) {
+    if (leaveModalOpen) return;
+    if (!formHasMeaningfulInput()) {
+      performNavigation(target, { replace: fromPopState, push: !fromPopState });
+      return;
     }
-    return true;
+    leaveModalOpen = true;
+    showModal({
+      title: 'Incident form in progress',
+      badge: 'UNFINISHED DRAFT',
+      body: '<p>You have unsaved incident information. You can keep editing, save the draft on this device and leave, or discard it.</p><p><small>Photos are not retained in the browser draft and will need to be selected again after reopening.</small></p>',
+      buttons: [
+        { label: 'Discard and leave', className: 'danger-button', onClick: () => { discardCurrentDraft(); closeModal(); performNavigation(target, { replace: fromPopState, push: !fromPopState }); } },
+        { label: 'Save draft and leave', className: 'secondary', onClick: () => { saveDraftNow(); closeModal(); performNavigation(target, { replace: fromPopState, push: !fromPopState }); } },
+        { label: 'Continue editing', className: 'primary', onClick: () => closeModal() }
+      ]
+    });
   }
 
   nav = function(name) {
-    return navigateView(name);
+    const before = activeViewName();
+    if (before === 'log' && name !== 'log' && !suppressGuard) {
+      requestLeave(name, false);
+      return false;
+    }
+    performNavigation(name, { push: true });
+    return true;
   };
 
   window.addEventListener('popstate', event => {
-    const target = event.state?.dcaView || 'dashboard';
     const drawer = $('detailDrawer');
-
     if (drawer && !drawer.classList.contains('hidden') && !event.state?.dcaDrawer) {
       drawer.classList.add('hidden');
       drawerHistoryOpen = false;
+      if (detailMap) { try { detailMap.remove(); } catch {} detailMap = null; }
       return;
     }
 
+    const target = validViews.includes(event.state?.dcaView) ? event.state.dcaView : 'dashboard';
     const before = activeViewName();
-    if (before === 'log' && target !== 'log' && !confirmLeaveDraft()) {
+    if (before === 'log' && target !== 'log' && formHasMeaningfulInput()) {
       history.pushState({ dcaView: 'log', dcaDrawer: false }, '', '#log');
+      requestLeave(target, true);
       return;
     }
-
-    suppressHistory = true;
-    try {
-      originalNav(target);
-      currentView = target;
-    } finally {
-      suppressHistory = false;
-    }
+    performNavigation(target, { replace: true, push: false });
   });
 
   window.addEventListener('beforeunload', event => {
     if (!formHasMeaningfulInput()) return;
+    saveDraftNow();
     event.preventDefault();
     event.returnValue = '';
   });
 
-  function markDirty() { draftDirty = true; }
-
   const form = $('incidentForm');
   if (form) {
-    form.addEventListener('input', markDirty, true);
-    form.addEventListener('change', markDirty, true);
+    form.addEventListener('input', scheduleDraftSave, true);
+    form.addEventListener('change', scheduleDraftSave, true);
   }
 
   selectCategory = function(cat) {
-    markDirty();
-    return originalSelectCategory(cat);
+    const result = baseSelectCategory(cat);
+    if (!suppressGuard) scheduleDraftSave();
+    return result;
   };
 
   setEntryLocation = function(lat, lng, accuracy = null, pan = false) {
-    markDirty();
-    const result = originalSetEntryLocation(lat, lng, accuracy, pan);
-    renderEntryGridReference(lat, lng);
+    const result = baseSetEntryLocation(lat, lng, accuracy, pan);
+    renderEntryGridReference(lat, lng, accuracy);
+    if (!suppressGuard) scheduleDraftSave();
     return result;
   };
 
   resetForm = function() {
-    const result = originalResetForm();
+    const result = baseResetForm();
     draftDirty = false;
+    clearDraft();
     const box = $('entryGridReference');
     if (box) box.textContent = '—';
     return result;
@@ -131,7 +300,7 @@
     const wrap = document.createElement('div');
     wrap.id = 'entryLocationFormats';
     wrap.className = 'location-formats';
-    wrap.innerHTML = '<div class="location-format-chip">British Grid: <strong id="entryGridReference">—</strong></div><div class="location-format-chip">Grid reference is calculated from the selected GPS/map point.</div>';
+    wrap.innerHTML = '<div class="location-format-chip">British Grid: <strong id="entryGridReference">—</strong></div><div class="location-format-chip" id="entryGridAccuracy">Grid reference is calculated from the selected GPS/map point.</div>';
     coordRow.insertAdjacentElement('afterend', wrap);
   }
 
@@ -209,69 +378,102 @@
     return `${letters} ${e} ${n}`;
   }
 
-  function locationRefs(lat, lng) {
+  function digitsForAccuracy(accuracy) {
+    const a = Number(accuracy);
+    if (!Number.isFinite(a) || a <= 0) return 8;
+    if (a <= 10) return 8;
+    if (a <= 100) return 6;
+    return 4;
+  }
+
+  function locationRefs(lat, lng, accuracy = null) {
     const grid = wgs84ToOsgbGrid(Number(lat), Number(lng));
+    const digits = digitsForAccuracy(accuracy);
     return {
-      gridRef: gridLetters(grid.easting, grid.northing, 8) || 'Outside British National Grid',
+      gridRef: gridLetters(grid.easting, grid.northing, digits) || 'Outside British National Grid',
       easting: Math.round(grid.easting),
-      northing: Math.round(grid.northing)
+      northing: Math.round(grid.northing),
+      digits
     };
   }
 
-  function renderEntryGridReference(lat, lng) {
+  function renderEntryGridReference(lat, lng, accuracy = null) {
     injectEntryGridReference();
     const target = $('entryGridReference');
+    const note = $('entryGridAccuracy');
     if (!target) return;
-    try { target.textContent = locationRefs(lat, lng).gridRef; }
-    catch { target.textContent = 'Unavailable'; }
-  }
-
-  async function loadWhat3Words(lat, lng, targetId, linkId) {
-    const target = $(targetId), link = $(linkId);
-    if (!target) return;
-    target.textContent = 'Looking up…';
     try {
-      const r = await apiFetch(`/api/location/w3w?lat=${encodeURIComponent(lat)}&lng=${encodeURIComponent(lng)}`);
-      const data = await r.json();
-      if (!r.ok) {
-        target.textContent = r.status === 503 ? 'Not configured' : 'Unavailable';
-        if (r.status === 503) target.title = 'A what3words API key must be configured on the server.';
-        return;
-      }
-      target.textContent = data.words ? `///${data.words}` : 'Unavailable';
-      if (link && data.map) {
-        link.href = data.map;
-        link.classList.remove('hidden');
-      }
+      const refs = locationRefs(lat, lng, accuracy);
+      target.textContent = refs.gridRef;
+      if (note) note.textContent = Number.isFinite(Number(accuracy)) && Number(accuracy) > 0
+        ? `${refs.digits}-figure reference shown to reflect GPS accuracy of about ±${Math.round(Number(accuracy))} m.`
+        : `${refs.digits}-figure reference from the manually selected map point.`;
     } catch {
       target.textContent = 'Unavailable';
     }
   }
 
+  async function copyText(text, button) {
+    try {
+      await navigator.clipboard.writeText(text);
+      const old = button?.textContent;
+      if (button) { button.textContent = 'Copied'; setTimeout(() => button.textContent = old, 1200); }
+    } catch {
+      const ta = document.createElement('textarea');
+      ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
+    }
+  }
+
+  function injectAdminLocationPanel(i) {
+    if (!adminMode) return;
+    const lat = Number(i.latitude), lng = Number(i.longitude), accuracy = Number(i.accuracy_m);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+    const drawer = $('drawerContent');
+    if (!drawer) return;
+
+    drawer.querySelector('#adminLocationReferences')?.remove();
+    const refs = locationRefs(lat, lng, Number.isFinite(accuracy) ? accuracy : null);
+    const gridFinder = `https://gridreferencefinder.com/index.php?x=${encodeURIComponent(refs.easting)}&y=${encodeURIComponent(refs.northing)}`;
+    const googleMaps = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${lat},${lng}`)}`;
+    const osMaps = `https://explore.osmaps.com/?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lng)}&zoom=17&style=Standard&type=2d`;
+
+    const panel = document.createElement('div');
+    panel.id = 'adminLocationReferences';
+    panel.className = 'location-reference-panel';
+    panel.innerHTML = `<h3>Exact incident location</h3>
+      <div id="adminDetailMap" class="admin-detail-map"></div>
+      <div class="location-reference-grid">
+        <div class="location-reference-item"><span>British National Grid</span><strong>${esc(refs.gridRef)}</strong><small>${refs.digits}-figure reference${Number.isFinite(accuracy) && accuracy > 0 ? ` · GPS accuracy ±${Math.round(accuracy)} m` : ' · manual map point'}</small><div class="location-actions"><button type="button" data-copy="${esc(refs.gridRef)}">Copy grid ref</button><a href="${gridFinder}" target="_blank" rel="noopener noreferrer">Grid Ref Finder ↗</a></div></div>
+        <div class="location-reference-item"><span>Easting / Northing</span><strong>E ${refs.easting} · N ${refs.northing}</strong><div class="location-actions"><button type="button" data-copy="${refs.easting}, ${refs.northing}">Copy E/N</button></div></div>
+        <div class="location-reference-item"><span>Latitude / longitude</span><strong>${lat.toFixed(6)}, ${lng.toFixed(6)}</strong><div class="location-actions"><button type="button" data-copy="${lat.toFixed(6)}, ${lng.toFixed(6)}">Copy coordinates</button></div></div>
+        <div class="location-reference-item"><span>Open exact point</span><strong>External mapping</strong><div class="location-actions"><a href="${googleMaps}" target="_blank" rel="noopener noreferrer">Google Maps ↗</a><a href="${osMaps}" target="_blank" rel="noopener noreferrer">OS Maps ↗</a></div><small>Opening an external map sends the coordinates to that service.</small></div>
+      </div>
+      <div class="location-audit-note"><strong>Original submitted location.</strong> This view does not silently overwrite the point recorded with the incident. Any future location-edit feature should retain the original value in the audit history.</div>`;
+
+    const detailGrid = drawer.querySelector('.detail-grid');
+    if (detailGrid) detailGrid.insertAdjacentElement('afterend', panel);
+    else drawer.prepend(panel);
+
+    panel.querySelectorAll('[data-copy]').forEach(btn => btn.addEventListener('click', () => copyText(btn.dataset.copy, btn)));
+
+    setTimeout(() => {
+      try {
+        if (detailMap) { detailMap.remove(); detailMap = null; }
+        detailMap = L.map('adminDetailMap', { zoomControl: true }).setView([lat, lng], 17);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 20, attribution: '© OpenStreetMap contributors' }).addTo(detailMap);
+        L.marker([lat, lng], { icon: leafletCategoryIcon(i.category, false) }).addTo(detailMap).bindPopup(`<strong>${esc(i.incident_ref || 'Incident')}</strong><br>${esc(i.category || 'Incident')}`);
+        if (Number.isFinite(accuracy) && accuracy > 0) L.circle([lat, lng], { radius: accuracy, weight: 1, fillOpacity: .08 }).addTo(detailMap);
+        detailMap.invalidateSize();
+      } catch {}
+    }, 80);
+  }
+
   openIncident = async function(id) {
-    const result = await originalOpenIncident(id);
+    if (detailMap) { try { detailMap.remove(); } catch {} detailMap = null; }
+    const result = await baseOpenIncident(id);
     if (!adminMode) return result;
     const i = incidents.find(x => String(x.id) === String(id));
-    if (!i) return result;
-    const lat = Number(i.latitude), lng = Number(i.longitude);
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return result;
-
-    const drawer = $('drawerContent');
-    if (drawer && !$('adminLocationReferences')) {
-      const refs = locationRefs(lat, lng);
-      const panel = document.createElement('div');
-      panel.id = 'adminLocationReferences';
-      panel.className = 'location-reference-panel';
-      panel.innerHTML = `<h3>Location references</h3><div class="location-reference-grid">
-        <div class="location-reference-item"><span>British National Grid</span><strong>${esc(refs.gridRef)}</strong><small>E ${refs.easting} · N ${refs.northing}</small></div>
-        <div class="location-reference-item"><span>Latitude / longitude</span><strong>${lat.toFixed(6)}, ${lng.toFixed(6)}</strong></div>
-        <div class="location-reference-item"><span>what3words</span><strong id="adminW3W">Looking up…</strong><a id="adminW3WLink" class="hidden" target="_blank" rel="noopener noreferrer">Open in what3words ↗</a></div>
-      </div>`;
-      const grid = drawer.querySelector('.detail-grid');
-      if (grid) grid.insertAdjacentElement('afterend', panel);
-      else drawer.prepend(panel);
-      loadWhat3Words(lat, lng, 'adminW3W', 'adminW3WLink');
-    }
+    if (i) injectAdminLocationPanel(i);
 
     if (!drawerHistoryOpen && !$('detailDrawer')?.classList.contains('hidden')) {
       history.pushState({ dcaView: activeViewName(), dcaDrawer: true }, '', location.href);
@@ -282,6 +484,7 @@
 
   document.querySelectorAll('[data-close-drawer]').forEach(el => {
     el.addEventListener('click', () => {
+      if (detailMap) { try { detailMap.remove(); } catch {} detailMap = null; }
       if (drawerHistoryOpen && history.state?.dcaDrawer) {
         drawerHistoryOpen = false;
         history.back();
@@ -289,15 +492,88 @@
     });
   });
 
+  renderRecords = function() {
+    baseRenderRecords();
+    if (!recordLayer || !recordsMap) return;
+    recordLayer.clearLayers();
+    const points = [];
+    incidents.forEach(i => {
+      const lat = Number(i.latitude), lng = Number(i.longitude);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+      points.push([lat, lng]);
+      const marker = L.marker([lat, lng], { icon: leafletCategoryIcon(i.category, !adminMode) }).addTo(recordLayer);
+      if (adminMode) {
+        marker.bindPopup(`<strong>${esc(i.incident_ref || '')}</strong><br>${esc(i.category || 'Incident')}<br>${esc(i.site || '')}`);
+        if (i.id) marker.on('click', () => openIncident(i.id));
+      } else {
+        marker.bindPopup(`<strong>${esc(iconForCategory(i.category))} ${esc(i.category || 'Incident')}</strong><br>${esc(i.site || 'Durham Coast')}<br><small>Approximate location. Ticket details restricted.</small>`);
+      }
+    });
+    if (points.length) recordsMap.fitBounds(L.latLngBounds(points).pad(.12), { maxZoom: adminMode ? 14 : 13 });
+  };
+
+  async function enhancedSaveIncident(e) {
+    e.preventDefault();
+    $('formMsg').textContent = '';
+    if (!selectedCategory) { $('formMsg').textContent = 'Select an incident category.'; return; }
+    if (!$('description').value.trim()) { $('formMsg').textContent = 'Add a brief incident description.'; return; }
+    if (!$('occurredAt').value) { $('formMsg').textContent = 'Add the incident date and time.'; return; }
+    if (!entryLocation) { $('formMsg').textContent = 'Set the incident location using GPS or the map.'; return; }
+
+    $('saveBtn').disabled = true;
+    $('saveBtn').textContent = 'Saving…';
+    try {
+      const r = await apiFetch('/api/incidents', { method: 'POST', body: JSON.stringify(payload()) });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || 'Could not save incident');
+      const ref = data?.incident?.incident_ref || 'Saved';
+      clearDraft();
+      suppressGuard = true;
+      try { baseResetForm(); draftDirty = false; } finally { suppressGuard = false; }
+      try { await loadIncidents(); } catch {}
+
+      showModal({
+        title: 'Incident saved',
+        badge: 'SUBMISSION COMPLETE',
+        body: `<p>The incident has been added to the shared system.</p><div class="save-confirm-ref">${esc(ref)}</div><p><small>Keep this reference if you need to discuss or follow up the report.</small></p>`,
+        buttons: [
+          { label: 'Return to overview', className: 'secondary', onClick: () => { closeModal(); performNavigation('dashboard', { push: true }); } },
+          { label: 'Log another incident', className: 'secondary', onClick: () => { closeModal(); performNavigation('log', { replace: true, push: false }); } },
+          { label: 'Copy reference', className: 'primary', onClick: overlay => copyText(ref, overlay.querySelector('.primary')) }
+        ]
+      });
+    } catch (err) {
+      $('formMsg').textContent = err.message || 'Could not save incident.';
+      saveDraftNow();
+    } finally {
+      $('saveBtn').disabled = false;
+      $('saveBtn').textContent = 'Save incident';
+    }
+  }
+
+  if (form) form.onsubmit = enhancedSaveIncident;
+
+  function offerStoredDraft() {
+    const draft = readDraft();
+    if (!draft) return;
+    showModal({
+      title: 'Unfinished incident found',
+      badge: 'SAVED ON THIS DEVICE',
+      body: '<p>An unfinished incident was saved in this browser. Resume it or discard it before starting another report.</p><p><small>For security and browser-storage limits, photos are not stored in the draft.</small></p>',
+      buttons: [
+        { label: 'Discard draft', className: 'danger-button', onClick: () => { clearDraft(); closeModal(); } },
+        { label: 'Resume incident', className: 'primary', onClick: () => { restoreDraft(draft); closeModal(); performNavigation('log', { push: true }); } }
+      ]
+    });
+  }
+
   addUxStyles();
   injectEntryGridReference();
 
   const hashView = location.hash.replace('#', '');
-  const validViews = ['dashboard', 'log', 'records'];
   currentView = validViews.includes(hashView) ? hashView : activeViewName();
   history.replaceState({ dcaView: currentView, dcaDrawer: false }, '', currentView === 'dashboard' ? location.pathname + location.search : `#${currentView}`);
-  if (activeViewName() !== currentView) {
-    suppressHistory = true;
-    try { originalNav(currentView); } finally { suppressHistory = false; }
-  }
+  if (activeViewName() !== currentView) performNavigation(currentView, { replace: true, push: false });
+
+  setTimeout(offerStoredDraft, 450);
 })();
