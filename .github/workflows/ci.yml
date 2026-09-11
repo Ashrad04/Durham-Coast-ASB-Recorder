@@ -16,4 +16,6 @@ jobs:
           node-version: 20
       - run: npm install --no-audit --no-fund
       - run: node --check server.js
+      - run: node --check secure-proxy.js
       - run: node --check public/app.js
+      - run: node --check public/privacy-ui.js
