@@ -89,17 +89,37 @@
     });
   }
 
+  function disablePublicMapZoom() {
+    if (!recordsMap) return;
+    recordsMap.setMaxZoom(9);
+    if (recordsMap.getZoom() > 9) recordsMap.setZoom(9);
+    recordsMap.touchZoom?.disable();
+    recordsMap.scrollWheelZoom?.disable();
+    recordsMap.doubleClickZoom?.disable();
+    recordsMap.boxZoom?.disable();
+    recordsMap.keyboard?.disable();
+  }
+
+  function enableAdminMapZoom() {
+    if (!recordsMap) return;
+    recordsMap.setMaxZoom(20);
+    recordsMap.touchZoom?.enable();
+    recordsMap.scrollWheelZoom?.enable();
+    recordsMap.doubleClickZoom?.enable();
+    recordsMap.boxZoom?.enable();
+    recordsMap.keyboard?.enable();
+  }
+
   renderRecords = function() {
     if (adminMode) {
-      if (recordsMap) recordsMap.setMaxZoom(20);
+      enableAdminMapZoom();
       return currentRenderRecords();
     }
 
     const result = currentRenderRecords();
     if (!recordLayer || !recordsMap) return result;
 
-    recordsMap.setMaxZoom(11);
-    if (recordsMap.getZoom() > 11) recordsMap.setZoom(11);
+    disablePublicMapZoom();
     recordLayer.clearLayers();
     const points = [];
 
@@ -108,24 +128,25 @@
       if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
       points.push([lat,lng]);
       L.circle([lat,lng], {
-        radius: 1300,
+        radius: 5000,
         interactive: false,
-        fillOpacity: 0.07,
-        opacity: 0.22,
+        fillOpacity: 0.06,
+        opacity: 0.2,
         weight: 1
       }).addTo(recordLayer);
       const marker = L.marker([lat,lng], { icon: publicIcon(i.category) }).addTo(recordLayer);
-      marker.bindPopup(`<strong>${esc(i.category || 'Incident')}</strong><br><small>Generalised area only. Exact incident location is restricted to administrators.</small>`);
+      marker.bindPopup(`<strong>${esc(i.category || 'Incident')}</strong><br><small>Generalised area only. This symbol is deliberately displaced from the submitted location; exact coordinates are restricted to administrators.</small>`);
     });
 
-    if (points.length) recordsMap.fitBounds(L.latLngBounds(points).pad(.18), { maxZoom: 10 });
+    if (points.length) recordsMap.fitBounds(L.latLngBounds(points).pad(.25), { maxZoom: 9 });
+    disablePublicMapZoom();
 
     const panel = document.querySelector('#view-records .records-toolbar');
     if (panel && !document.getElementById('publicMapPrivacyNotice')) {
       const notice = document.createElement('div');
       notice.id = 'publicMapPrivacyNotice';
       notice.className = 'public-map-notice';
-      notice.innerHTML = '<strong>Privacy-protected map:</strong> public markers are intentionally displaced/generalised to a broad area and cannot be zoomed to the stored incident point. Administrators see the precise submitted location after login.';
+      notice.innerHTML = '<strong>Privacy-protected map:</strong> non-admin symbols are deliberately displaced by several kilometres and represent only a broad area. Pinch, wheel and double-click zoom are disabled here. The precise submitted location is available only after admin login.';
       panel.insertAdjacentElement('afterend', notice);
     }
     return result;
@@ -136,7 +157,7 @@
     await existingLoginAdmin();
     if (adminMode) {
       document.getElementById('publicMapPrivacyNotice')?.remove();
-      recordsMap?.setMaxZoom(20);
+      enableAdminMapZoom();
       try { await loadIncidents(); } catch {}
       renderAll();
     }
@@ -145,7 +166,7 @@
   const existingExitAdmin = exitAdmin;
   exitAdmin = function(message='') {
     const result = existingExitAdmin(message);
-    recordsMap?.setMaxZoom(11);
+    disablePublicMapZoom();
     return result;
   };
 })();
