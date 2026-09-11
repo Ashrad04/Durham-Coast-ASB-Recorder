@@ -5,7 +5,6 @@ const { spawn } = require('child_process');
 const PUBLIC_PORT = Number(process.env.PORT || 3000);
 const INTERNAL_PORT = Number(process.env.INTERNAL_APP_PORT || 3001);
 const ADMIN_CODE = process.env.ADMIN_CODE || '';
-const W3W_API_KEY = process.env.W3W_API_KEY || '';
 
 function clean(v, max = 500) {
   return v == null ? '' : String(v).trim().slice(0, max);
@@ -145,34 +144,6 @@ function handlePublicIncidentCreate(req, res) {
   });
 }
 
-async function handleWhat3Words(req, res, url) {
-  if (!W3W_API_KEY) return sendJson(res, 503, { error: 'what3words API is not configured.' });
-  const lat = Number(url.searchParams.get('lat'));
-  const lng = Number(url.searchParams.get('lng'));
-  if (!Number.isFinite(lat) || lat < -90 || lat > 90 || !Number.isFinite(lng) || lng < -180 || lng > 180) {
-    return sendJson(res, 400, { error: 'Valid latitude and longitude are required.' });
-  }
-
-  try {
-    const endpoint = new URL('https://api.what3words.com/v3/convert-to-3wa');
-    endpoint.searchParams.set('coordinates', `${lat},${lng}`);
-    endpoint.searchParams.set('language', 'en');
-    const response = await fetch(endpoint, {
-      headers: { 'X-Api-Key': W3W_API_KEY },
-      signal: AbortSignal.timeout(8000)
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) return sendJson(res, response.status, { error: data?.error?.message || 'what3words lookup failed.' });
-    return sendJson(res, 200, {
-      words: clean(data.words, 200),
-      nearest_place: clean(data.nearestPlace, 200),
-      map: clean(data.map, 500)
-    });
-  } catch {
-    return sendJson(res, 502, { error: 'what3words lookup is temporarily unavailable.' });
-  }
-}
-
 const child = spawn(process.execPath, ['server.js'], {
   env: { ...process.env, PORT: String(INTERNAL_PORT) },
   stdio: 'inherit'
@@ -187,10 +158,6 @@ const server = http.createServer((req, res) => {
   const path = url.pathname;
   const admin = isAdmin(req);
 
-  if (path === '/api/location/w3w' && req.method === 'GET') {
-    if (!admin) return sendJson(res, 403, { error: 'Administrator access required.' });
-    return handleWhat3Words(req, res, url);
-  }
   if (path === '/api/incidents' && req.method === 'GET' && !admin) {
     return handlePublicIncidentList(req, res);
   }
