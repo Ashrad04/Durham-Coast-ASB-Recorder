@@ -8,6 +8,9 @@
   <link rel="preconnect" href="https://unpkg.com">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <link rel="stylesheet" href="/styles.css">
+  <style>
+    .field-key{margin:-8px 0 18px;color:#667871;font-size:13px}.core-star{color:#9b2c2c;font-weight:900}.field-help{display:block;margin-top:6px;color:#667871;font-size:12px;font-weight:500;line-height:1.45}.section-kicker{font-size:12px;font-weight:850;color:#174d43;margin:4px 0 10px}.severity-guide{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin:12px 0 4px}.severity-level{border:1px solid #dfe7e3;border-radius:12px;padding:12px;background:#f8faf9}.severity-level strong{display:block;margin-bottom:5px}.severity-level small{color:#667871;line-height:1.4}.severity-level.high,.severity-level.critical{border-color:#ead0cd;background:#fff8f7}.status-guide{background:#f8faf9;border:1px solid #dfe7e3;border-radius:12px;padding:12px;margin-top:10px;font-size:12px;color:#667871;line-height:1.5}.photo-choice-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8px}.photo-choice{border:1px solid #dfe7e3;border-radius:12px;padding:12px;background:#f8faf9}.photo-choice label{margin-top:0}.photo-choice strong{display:block;color:#17302b;margin-bottom:4px}.photo-choice small{display:block;color:#667871;font-weight:500;margin-bottom:8px;line-height:1.4}.required-note{font-size:11px;color:#667871;font-weight:600;margin-left:4px}@media(max-width:760px){.severity-guide{grid-template-columns:1fr 1fr}.photo-choice-grid{grid-template-columns:1fr}}@media(max-width:420px){.severity-guide{grid-template-columns:1fr}}
+  </style>
 </head>
 <body>
   <div id="loginOverlay" class="overlay hidden">
@@ -15,17 +18,19 @@
       <div class="brand-mark">DC</div>
       <h1>Durham Coast Incident Hub</h1>
       <p class="muted">Shared incident logging for partner organisations and stakeholders.</p>
-      <label>Recorder name<input id="loginName" autocomplete="name" placeholder="Your name"></label>
-      <label>Organisation<input id="loginOrg" list="orgList" placeholder="Organisation"></label>
+      <label>Recorder name <span class="core-star">*</span><input id="loginName" autocomplete="name" placeholder="Your name"></label>
+      <label>Organisation / user type <span class="core-star">*</span><input id="loginOrg" list="orgList" placeholder="Organisation or user type"></label>
       <datalist id="orgList">
         <option>Durham County Council</option>
+        <option>Member of public</option>
         <option>Durham Wildlife Trust</option>
         <option>Durham Constabulary</option>
-        <option>Environment Agency</option>
         <option>Natural England</option>
+        <option>National Trust</option>
         <option>Parish / Town Council</option>
         <option>Landowner / Estate</option>
         <option>Community Group</option>
+        <option>Other organisation</option>
       </datalist>
       <label id="accessCodeWrap">Access code<input id="loginCode" type="password" autocomplete="current-password" placeholder="Shared access code"></label>
       <button id="loginBtn" class="primary wide">Enter system</button>
@@ -72,24 +77,34 @@
     <section id="view-log" class="view">
       <div class="page-heading">
         <button class="back-button" data-nav="dashboard">←</button>
-        <div><span class="eyebrow">NEW RECORD</span><h2>Log an incident</h2><p>Core details first. Optional fields can be added where useful.</p></div>
+        <div><span class="eyebrow">NEW RECORD</span><h2>Log an incident</h2><p>Capture the core facts first, then add optional operational detail where useful.</p></div>
       </div>
+      <p class="field-key"><span class="core-star">*</span> Core information required for a useful shared record. Unmarked fields are optional unless relevant.</p>
 
       <form id="incidentForm" novalidate>
         <div class="form-card">
           <div class="step-heading"><span class="step-number">1</span><div><h3>What happened?</h3><p>Select the closest category, then add a concise factual description.</p></div></div>
+          <div class="section-kicker">Incident category <span class="core-star">*</span></div>
           <div id="categoryGrid" class="category-grid"></div>
-          <div class="two-col">
-            <label>Subcategory<select id="subcategory"><option value="">Select category first</option></select></label>
-            <label>Severity<select id="severity"><option>Low</option><option selected>Medium</option><option>High</option><option>Critical</option></select></label>
+          <label>Subcategory<select id="subcategory"><option value="">Select category first</option></select></label>
+          <label>Incident description <span class="core-star">*</span><textarea id="description" rows="4" placeholder="What was observed? Keep this factual and avoid unnecessary personal information."></textarea></label>
+        </div>
+
+        <div class="form-card">
+          <div class="step-heading"><span class="step-number">!</span><div><h3>Severity assessment</h3><p>Use the guide below to reduce subjectivity. If unsure, choose Not assessed and allow a reviewer to grade it later.</p></div></div>
+          <div class="severity-guide">
+            <div class="severity-level"><strong>Low</strong><small>Minor nuisance or isolated issue with little or no damage and no immediate safety concern.</small></div>
+            <div class="severity-level"><strong>Medium</strong><small>Clear impact, repeat issue or limited damage/disturbance where follow-up is appropriate.</small></div>
+            <div class="severity-level high"><strong>High</strong><small>Significant safety, environmental, criminal or infrastructure impact requiring prompt coordinated response.</small></div>
+            <div class="severity-level critical"><strong>Critical</strong><small>Immediate serious threat to life, major environmental harm or active emergency. Use emergency reporting routes first.</small></div>
           </div>
-          <label>Incident description <span class="required">required</span><textarea id="description" rows="4" placeholder="What was observed? Keep this factual and avoid unnecessary personal information."></textarea></label>
+          <label>Severity<select id="severity"><option selected>Not assessed</option><option>Low</option><option>Medium</option><option>High</option><option>Critical</option></select><span class="field-help">This is an operational assessment, not a legal classification.</span></label>
         </div>
 
         <div class="form-card">
           <div class="step-heading"><span class="step-number">2</span><div><h3>Where and when?</h3><p>Use GPS in the field or place the marker manually.</p></div></div>
           <div class="two-col">
-            <label>Date and time<input id="occurredAt" type="datetime-local"></label>
+            <label>Date and time <span class="core-star">*</span><input id="occurredAt" type="datetime-local"></label>
             <label>Time certainty<select id="timePrecision"><option>Exact</option><option>Approximate</option><option>Unknown time</option></select></label>
           </div>
           <div class="two-col">
@@ -100,7 +115,7 @@
           <label>Location description<input id="locationDescription" placeholder="Access point, landmark, path or other useful detail"></label>
           <div class="location-toolbar">
             <button type="button" id="gpsBtn" class="secondary">◎ Use my GPS</button>
-            <span id="gpsStatus" class="muted">Tap the map to place the incident.</span>
+            <span id="gpsStatus" class="muted">Location <span class="core-star">*</span> — tap the map or use GPS.</span>
           </div>
           <div id="entryMap" class="entry-map"></div>
           <div class="coord-row"><span id="coordText">No location selected</span><span id="accuracyText"></span></div>
@@ -122,7 +137,11 @@
               <label>Vehicle description <span class="sensitive-pill">restricted</span><input id="vehicleDescription" placeholder="Type, colour, distinguishing features"></label>
             </div>
           </div>
-          <label>Photos <span class="optional">up to 3</span><input id="photos" type="file" accept="image/*" capture="environment" multiple></label>
+          <div class="section-kicker" style="margin-top:18px">Photos <span class="optional">optional, up to 3 in total</span></div>
+          <div class="photo-choice-grid">
+            <div class="photo-choice"><strong>Take a photo now</strong><small>Opens the device camera where supported.</small><label>Camera<input id="cameraPhotos" type="file" accept="image/*" capture="environment"></label></div>
+            <div class="photo-choice"><strong>Choose existing photo</strong><small>Select an image already saved on the device, including one taken earlier.</small><label>Files / gallery<input id="photos" type="file" accept="image/*" multiple></label></div>
+          </div>
           <div id="photoPreview" class="photo-preview"></div>
           <details class="sensitive-box"><summary>Restricted personal / sensitive information</summary><p>Use only where necessary for a legitimate incident-management purpose. Avoid speculative descriptions.</p><label>Identifiable person details<textarea id="personDetails" rows="2"></textarea></label><label>Restricted notes<textarea id="sensitiveNotes" rows="2"></textarea></label></details>
         </div>
@@ -131,8 +150,9 @@
           <div class="step-heading"><span class="step-number">4</span><div><h3>Reporting and follow-up</h3><p>Connect this record to partner actions and other systems.</p></div></div>
           <div class="two-col">
             <label>Source<select id="sourceType"><option>Staff / partner observation</option><option>Member of public</option><option>Volunteer / community group</option><option>CCTV / camera</option><option>Police / enforcement report</option><option>Other partner referral</option></select></label>
-            <label>Status<select id="status"><option>New</option><option>Reviewed</option><option>Assigned</option><option>Action in progress</option><option>Monitoring</option><option>Closed</option></select></label>
+            <label>Status<select id="status"><option>New</option><option>Reviewed</option><option>Assigned</option><option>Action in progress</option><option>Monitoring</option><option>Closed</option></select><span class="field-help">For a newly logged incident, leave this as <strong>New</strong> unless work has already progressed.</span></label>
           </div>
+          <div class="status-guide"><strong>Status guide:</strong> New = logged but not yet reviewed · Reviewed = checked/triaged · Assigned = responsibility agreed · Action in progress = active response underway · Monitoring = no immediate action but being watched · Closed = no further action currently required.</div>
           <div class="two-col"><label>Police / crime reference<input id="policeRef"></label><label>Other partner reference<input id="partnerRef" placeholder="CRM, case or work-order reference"></label></div>
           <div class="two-col"><label>Lead organisation<input id="leadOrg" list="orgList"></label><label>Assigned to<input id="assignedTo" placeholder="Team or named contact"></label></div>
           <label>Linked incident reference<input id="linkedIncidentRef" placeholder="e.g. DCA-2026-00042"></label>
