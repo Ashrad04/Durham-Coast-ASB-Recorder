@@ -3,9 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "description": "Multi-organisation Durham Coast incident and anti-social behaviour logging system",
-  "main": "server.js",
+  "main": "secure-proxy.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node secure-proxy.js"
   },
   "engines": {
     "node": ">=20"
