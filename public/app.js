@@ -31,7 +31,7 @@ async function apiFetch(url, options={}) {
   if (adminToken) options.headers['x-admin-token'] = adminToken;
   if (options.body && !options.headers['Content-Type']) options.headers['Content-Type']='application/json';
   const r = await fetch(url, options);
-  if (r.status===401) {
+  if (r.status===401 && !url.startsWith('/api/admin/')) {
     showLogin('Access code incorrect or no longer valid.');
     throw new Error('Access denied');
   }
@@ -42,8 +42,8 @@ function injectAdminUI() {
   const style=document.createElement('style');
   style.textContent=`
     .top-actions{display:flex;align-items:center;gap:8px}
-    .admin-switch{border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.12);color:#fff;border-radius:999px;padding:8px 12px;font-weight:800;font-size:12px}
-    .admin-switch.active{background:#fff;color:#7b3131;border-color:#fff}
+    .admin-switch{border:1px solid rgba(255,255,255,.42);background:rgba(255,255,255,.08);color:#fff;border-radius:999px;padding:8px 12px;font-weight:800;font-size:12px}
+    .admin-switch.active{background:#e6f4ee;color:#174d43;border-color:#e6f4ee}
     .admin-zone{margin:18px 0;padding:14px;border:1px solid #e2b8b8;background:#fff7f7;border-radius:12px}
     .admin-zone strong{display:block;color:#7b3131;margin-bottom:5px}
     .danger-button{border:1px solid #b64a4a;background:#fff;color:#8c2525;border-radius:10px;padding:10px 13px;font-weight:800}
@@ -54,6 +54,7 @@ function injectAdminUI() {
     .admin-panel-head h2{margin:0}
     .admin-close{border:0;background:transparent;font-size:26px;color:#667871;padding:0 4px}
     .admin-active-banner{background:#edf5f2;border:1px solid #c9ded7;border-radius:12px;padding:12px;margin:14px 0}
+    .admin-login-banner{background:#f8faf9;border:1px solid #dfe7e3;border-radius:12px;padding:12px;margin:14px 0;font-size:13px;line-height:1.45}
     .archived-list{display:grid;gap:8px;margin-top:12px}
     .archived-item{border:1px solid #dfe7e3;border-radius:12px;padding:12px}
     .archived-item small{display:block;color:#667871;margin:4px 0 8px;line-height:1.4}
@@ -71,8 +72,9 @@ function injectAdminUI() {
   const adminBtn=document.createElement('button');
   adminBtn.id='adminSwitch';
   adminBtn.className='admin-switch';
-  adminBtn.textContent='Admin';
+  adminBtn.textContent='Admin login';
   adminBtn.type='button';
+  adminBtn.title='Administrator login';
   adminBtn.onclick=showAdminPanel;
   wrap.insertBefore(adminBtn, profileBtn);
 }
@@ -81,7 +83,8 @@ function updateAdminButton() {
   const b=$('adminSwitch');
   if (!b) return;
   b.classList.toggle('active',adminMode);
-  b.textContent=adminMode?'Admin ✓':'Admin';
+  b.textContent=adminMode?'Admin logged in':'Admin login';
+  b.title=adminMode?'Administrator session active — open admin controls':'Administrator login';
   b.classList.toggle('hidden',!config.admin_enabled);
 }
 
@@ -100,7 +103,7 @@ function initials(name) {
 
 async function login() {
   const name=$('loginName').value.trim(), org=$('loginOrg').value.trim();
-  if (!name || !org) { $('loginMsg').textContent='Enter your name and organisation.'; return; }
+  if (!name || !org) { $('loginMsg').textContent='Enter your name and organisation / user type.'; return; }
   accessCode = config.protected ? $('loginCode').value : '';
   try {
     const r=await apiFetch('/api/incidents');
@@ -215,9 +218,24 @@ async function fileToData(file) {
 }
 
 async function previewPhotos() {
-  const files=[...$('photos').files].slice(0,3); evidence=[]; $('photoPreview').innerHTML='';
+  const cameraFiles=$('cameraPhotos')?[...$('cameraPhotos').files]:[];
+  const existingFiles=$('photos')?[...$('photos').files]:[];
+  const files=[...cameraFiles,...existingFiles].slice(0,3);
+  evidence=[];
+  $('photoPreview').innerHTML='';
   for(const f of files){
-    try{const e=await fileToData(f);evidence.push(e);const im=new Image();im.src=e.data;$('photoPreview').appendChild(im)}catch{}
+    try{
+      const e=await fileToData(f);
+      evidence.push(e);
+      const im=new Image();im.src=e.data;im.alt='Selected incident evidence';
+      $('photoPreview').appendChild(im);
+    }catch{}
+  }
+  if(cameraFiles.length+existingFiles.length>3){
+    const note=document.createElement('div');
+    note.className='field-help';
+    note.textContent='Only the first 3 selected photos will be attached.';
+    $('photoPreview').appendChild(note);
   }
 }
 
@@ -246,6 +264,7 @@ async function saveIncident(e) {
   e.preventDefault(); $('formMsg').textContent='';
   if(!selectedCategory){$('formMsg').textContent='Select an incident category.';return}
   if(!$('description').value.trim()){$('formMsg').textContent='Add a brief incident description.';return}
+  if(!$('occurredAt').value){$('formMsg').textContent='Add the incident date and time.';return}
   if(!entryLocation){$('formMsg').textContent='Set the incident location using GPS or the map.';return}
   $('saveBtn').disabled=true;$('saveBtn').textContent='Saving…';
   try{
@@ -263,14 +282,14 @@ function resetForm() {
   $('incidentForm').reset(); selectedCategory=''; evidence=[]; entryLocation=null;
   document.querySelectorAll('.category-btn').forEach(b=>b.classList.remove('active'));
   $('subcategory').innerHTML='<option value="">Select category first</option>';
-  $('occurredAt').value=localDateTime(); $('severity').value='Medium'; $('timePrecision').value='Exact'; $('locationPrecision').value='Exact point'; $('sourceType').value='Staff / partner observation'; $('status').value='New';
-  $('leadOrg').value=profile.org||''; $('vehicleFields').classList.add('hidden'); $('followUpDateWrap').classList.add('hidden'); $('photoPreview').innerHTML=''; $('formMsg').textContent=''; $('duplicateWarning').classList.add('hidden'); $('coordText').textContent='No location selected'; $('accuracyText').textContent='';
+  $('occurredAt').value=localDateTime(); $('severity').value='Not assessed'; $('timePrecision').value='Exact'; $('locationPrecision').value='Exact point'; $('sourceType').value='Staff / partner observation'; $('status').value='New';
+  $('leadOrg').value=profile.org||''; $('vehicleFields').classList.add('hidden'); $('followUpDateWrap').classList.add('hidden'); $('photoPreview').innerHTML=''; $('formMsg').textContent=''; $('duplicateWarning').classList.add('hidden'); $('coordText').textContent='No location selected';$('accuracyText').textContent='';
   if(entryMarker){entryMap.removeLayer(entryMarker);entryMarker=null}
 }
 
 function incidentCard(i) {
   const closed=i.status==='Closed';
-  return `<article class="incident-card" data-id="${i.id}"><div><span class="incident-ref">${esc(i.incident_ref)}</span><div class="incident-title">${esc(i.category)}${i.subcategory?' · '+esc(i.subcategory):''}</div><div class="incident-meta"><span>${esc(i.site||'Unspecified site')}</span><span>•</span><span>${new Date(i.occurred_at).toLocaleString()}</span><span>•</span><span>${esc(i.reporter_org)}</span></div></div><div><span class="badge ${esc(i.severity||'').toLowerCase()}">${esc(i.severity)}</span><br><span class="badge ${closed?'':'open'}" style="margin-top:5px">${esc(i.status)}</span></div></article>`;
+  return `<article class="incident-card" data-id="${i.id}"><div><span class="incident-ref">${esc(i.incident_ref)}</span><div class="incident-title">${esc(i.category)}${i.subcategory?' · '+esc(i.subcategory):''}</div><div class="incident-meta"><span>${esc(i.site||'Unspecified site')}</span><span>•</span><span>${new Date(i.occurred_at).toLocaleString()}</span><span>•</span><span>${esc(i.reporter_org)}</span></div></div><div><span class="badge ${esc(i.severity||'').toLowerCase()}">${esc(i.severity||'Not assessed')}</span><br><span class="badge ${closed?'':'open'}" style="margin-top:5px">${esc(i.status)}</span></div></article>`;
 }
 
 function renderAll(){renderDashboard();renderRecords()}
@@ -317,10 +336,10 @@ async function openIncident(id){
   const i=incidents.find(x=>x.id===id);if(!i)return;
   let actions=[];
   try{const r=await apiFetch(`/api/incidents/${id}/actions`);if(r.ok)actions=(await r.json()).actions||[]}catch{}
-  const adminBlock=adminMode?`<div class="admin-zone"><strong>Admin controls</strong><div>This removes the incident from the shared log but keeps an audit record so it can be restored.</div><button class="danger-button" id="archiveIncidentBtn" type="button" style="margin-top:10px">Archive / remove record</button><p id="adminActionMsg" class="message"></p></div>`:'';
+  const adminBlock=adminMode?`<div class="admin-zone"><strong>Administrator controls</strong><div>This removes the incident from the shared log but keeps an audit record so it can be restored.</div><button class="danger-button" id="archiveIncidentBtn" type="button" style="margin-top:10px">Archive / remove record</button><p id="adminActionMsg" class="message"></p></div>`:'';
   const d=$('drawerContent');
   d.innerHTML=`<span class="incident-ref">${esc(i.incident_ref)}</span><h2>${esc(i.category)}</h2><p>${esc(i.description)}</p><div class="detail-grid">
-    ${detail('Status',i.status)}${detail('Severity',i.severity)}${detail('Occurred',new Date(i.occurred_at).toLocaleString())}${detail('Site',i.site||'—')}${detail('Recorded by',`${i.reporter_name} · ${i.reporter_org}`)}${detail('Source',i.source_type||'—')}${detail('Lead organisation',i.lead_org||'—')}${detail('Assigned to',i.assigned_to||'—')}${detail('Police ref',i.police_ref||'—')}${detail('Partner ref',i.partner_ref||'—')}${detail('Linked incident',i.linked_incident_ref||'—')}${detail('Environmental impact',i.habitat_affected||'—')}
+    ${detail('Status',i.status)}${detail('Severity',i.severity||'Not assessed')}${detail('Occurred',new Date(i.occurred_at).toLocaleString())}${detail('Site',i.site||'—')}${detail('Recorded by',`${i.reporter_name} · ${i.reporter_org}`)}${detail('Source',i.source_type||'—')}${detail('Lead organisation',i.lead_org||'—')}${detail('Assigned to',i.assigned_to||'—')}${detail('Police ref',i.police_ref||'—')}${detail('Partner ref',i.partner_ref||'—')}${detail('Linked incident',i.linked_incident_ref||'—')}${detail('Environmental impact',i.habitat_affected||'—')}
   </div>${i.evidence_json?.length?`<h3>Evidence</h3><div class="photo-preview">${i.evidence_json.map(e=>`<img src="${e.data}" alt="Incident evidence">`).join('')}</div>`:''}
   <p class="privacy-note">Restricted personal and vehicle-identifying fields are not shown in the general incident view.</p>
   ${adminBlock}
@@ -346,17 +365,17 @@ async function archiveIncident(id, ref){
   const reason=window.prompt(`Reason for removing ${ref} from the shared log:`,'Entered in error');
   if(reason===null)return;
   if(!reason.trim()){alert('A reason is required so the removal is auditable.');return}
-  if(!window.confirm(`Archive ${ref}? It will disappear from normal users but can be restored by an admin.`))return;
+  if(!window.confirm(`Archive ${ref}? It will disappear from normal users but can be restored by an administrator.`))return;
   const r=await apiFetch(`/api/incidents/${id}`,{method:'DELETE',body:JSON.stringify({actor_name:profile.name,actor_org:profile.org,reason:reason.trim()})});
   const data=await r.json();
   if(!r.ok){
-    if(r.status===403) exitAdmin('Your admin session has expired.');
+    if(r.status===403) exitAdmin('Your administrator session has expired.');
     else alert(data.error||'Could not archive incident.');
     return;
   }
   $('detailDrawer').classList.add('hidden');
   await loadIncidents();
-  alert(`${ref} has been removed from the shared log. It remains available to admins for restoration.`);
+  alert(`${ref} has been removed from the shared log. It remains available to administrators for restoration.`);
 }
 
 async function exportData(kind){
@@ -366,11 +385,11 @@ async function exportData(kind){
   const blob=await r.blob();const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=kind==='csv'?'durham-coast-asb-incidents.csv':'durham-coast-asb-incidents.geojson';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
 }
 
-function adminOverlayShell(inner){
+function adminOverlayShell(inner,title='Administrator login',eyebrow='ADMIN ACCESS'){
   const old=$('adminPanelOverlay');if(old)old.remove();
   const overlay=document.createElement('div');
   overlay.id='adminPanelOverlay';overlay.className='admin-panel-overlay';
-  overlay.innerHTML=`<div class="admin-panel-card"><div class="admin-panel-head"><div><span class="eyebrow">SYSTEM ADMIN</span><h2>Admin mode</h2></div><button class="admin-close" id="adminClose" type="button">×</button></div>${inner}</div>`;
+  overlay.innerHTML=`<div class="admin-panel-card"><div class="admin-panel-head"><div><span class="eyebrow">${esc(eyebrow)}</span><h2>${esc(title)}</h2></div><button class="admin-close" id="adminClose" type="button">×</button></div>${inner}</div>`;
   document.body.appendChild(overlay);
   $('adminClose').onclick=()=>overlay.remove();
   overlay.addEventListener('click',e=>{if(e.target===overlay)overlay.remove()});
@@ -380,13 +399,13 @@ function adminOverlayShell(inner){
 function showAdminPanel(message='') {
   if(!config.admin_enabled)return;
   if(!adminMode){
-    adminOverlayShell(`<p>Enter the administrator code. Successful login lasts for this browser session for up to 8 hours.</p><label>Admin code<input id="adminCodeInput" type="password" inputmode="numeric" autocomplete="current-password"></label><button id="adminLoginBtn" class="primary wide" type="button" style="margin-top:14px">Enter admin mode</button><p id="adminLoginMsg" class="message">${esc(message)}</p>`);
+    adminOverlayShell(`<div class="admin-login-banner"><strong>Standard user mode is active.</strong><br>You are not logged in as an administrator. Enter the administrator code below to unlock archive and restore controls.</div><label>Administrator code<input id="adminCodeInput" type="password" inputmode="numeric" autocomplete="current-password"></label><button id="adminLoginBtn" class="primary wide" type="button" style="margin-top:14px">Log in as administrator</button><p id="adminLoginMsg" class="message">${esc(message)}</p>`,'Administrator login','ADMIN ACCESS');
     $('adminLoginBtn').onclick=loginAdmin;
     $('adminCodeInput').addEventListener('keydown',e=>{if(e.key==='Enter')loginAdmin()});
     setTimeout(()=>$('adminCodeInput')?.focus(),50);
     return;
   }
-  adminOverlayShell(`<div class="admin-active-banner"><strong>Admin mode is active</strong><div style="font-size:13px;margin-top:4px">Open any incident to reveal the archive/remove control. Archived records can be restored below.</div></div><div class="admin-row"><button id="refreshArchivedBtn" class="secondary" type="button">Refresh archived records</button><button id="adminExitBtn" class="danger-button" type="button">Exit admin mode</button></div><h3 style="margin-bottom:4px">Archived records</h3><p class="privacy-note">These records are hidden from ordinary users but retained for audit and recovery.</p><div id="archivedList" class="archived-list"><div class="muted">Loading…</div></div>`);
+  adminOverlayShell(`<div class="admin-active-banner"><strong>Administrator session is active</strong><div style="font-size:13px;margin-top:4px">Open any incident to reveal the archive/remove control. Archived records can be restored below.</div></div><div class="admin-row"><button id="refreshArchivedBtn" class="secondary" type="button">Refresh archived records</button><button id="adminExitBtn" class="danger-button" type="button">Log out of admin</button></div><h3 style="margin-bottom:4px">Archived records</h3><p class="privacy-note">These records are hidden from ordinary users but retained for audit and recovery.</p><div id="archivedList" class="archived-list"><div class="muted">Loading…</div></div>`,'Admin controls','ADMINISTRATOR LOGGED IN');
   $('adminExitBtn').onclick=()=>exitAdmin();
   $('refreshArchivedBtn').onclick=loadArchived;
   loadArchived();
@@ -399,13 +418,13 @@ async function loginAdmin(){
   try{
     const r=await apiFetch('/api/admin/login',{method:'POST',body:JSON.stringify({code})});
     const data=await r.json();
-    if(!r.ok){$('adminLoginMsg').textContent=data.error||'Admin login failed.';return}
+    if(!r.ok){$('adminLoginMsg').textContent=data.error||'Administrator login failed.';return}
     adminToken=data.token;
     sessionStorage.setItem('dca_admin_token',adminToken);
     adminMode=true;
     updateAdminButton();
     showAdminPanel();
-  }catch(e){$('adminLoginMsg').textContent=e.message||'Admin login failed.'}
+  }catch(e){$('adminLoginMsg').textContent=e.message||'Administrator login failed.'}
   finally{if($('adminLoginBtn'))$('adminLoginBtn').disabled=false}
 }
 
@@ -434,7 +453,7 @@ async function loadArchived(){
   try{
     const r=await apiFetch('/api/admin/deleted');
     const data=await r.json();
-    if(!r.ok){if(r.status===403)exitAdmin('Your admin session has expired.');return}
+    if(!r.ok){if(r.status===403)exitAdmin('Your administrator session has expired.');return}
     const rows=data.incidents||[];
     $('archivedList').innerHTML=rows.length?rows.map(i=>`<div class="archived-item"><strong>${esc(i.incident_ref)} · ${esc(i.category)}</strong><small>${esc(i.site||'Unspecified site')}<br>Removed ${i.deleted_at?new Date(i.deleted_at).toLocaleString():'—'} by ${esc(i.deleted_by||'—')}<br>Reason: ${esc(i.delete_reason||'—')}</small><button class="secondary restore-btn" type="button" data-id="${esc(i.id)}" data-ref="${esc(i.incident_ref)}">Restore to shared log</button></div>`).join(''):'<div class="muted">No archived records.</div>';
     $('archivedList').querySelectorAll('.restore-btn').forEach(b=>b.onclick=()=>restoreIncident(b.dataset.id,b.dataset.ref));
@@ -445,7 +464,7 @@ async function restoreIncident(id,ref){
   if(!window.confirm(`Restore ${ref} to the shared log?`))return;
   const r=await apiFetch(`/api/admin/incidents/${id}/restore`,{method:'POST',body:'{}'});
   const data=await r.json();
-  if(!r.ok){if(r.status===403)exitAdmin('Your admin session has expired.');else alert(data.error||'Could not restore record.');return}
+  if(!r.ok){if(r.status===403)exitAdmin('Your administrator session has expired.');else alert(data.error||'Could not restore record.');return}
   await loadIncidents();
   await loadArchived();
 }
@@ -463,11 +482,18 @@ async function init(){
 }
 
 document.querySelectorAll('[data-nav]').forEach(b=>b.addEventListener('click',()=>nav(b.dataset.nav)));
-$('loginBtn').onclick=login;$('profileBtn').onclick=()=>showLogin();$('gpsBtn').onclick=getGPS;$('photos').onchange=previewPhotos;
+$('loginBtn').onclick=login;
+$('profileBtn').onclick=()=>showLogin();
+$('gpsBtn').onclick=getGPS;
+$('photos').onchange=previewPhotos;
+if($('cameraPhotos')) $('cameraPhotos').onchange=previewPhotos;
 $('vehicleInvolved').onchange=e=>$('vehicleFields').classList.toggle('hidden',!e.target.checked);
 $('followUpRequired').onchange=e=>$('followUpDateWrap').classList.toggle('hidden',!e.target.checked);
-$('incidentForm').onsubmit=saveIncident;$('resetBtn').onclick=resetForm;$('applyFilters').onclick=loadIncidents;
-$('csvBtn').onclick=()=>exportData('csv');$('geoBtn').onclick=()=>exportData('geojson');
+$('incidentForm').onsubmit=saveIncident;
+$('resetBtn').onclick=resetForm;
+$('applyFilters').onclick=loadIncidents;
+$('csvBtn').onclick=()=>exportData('csv');
+$('geoBtn').onclick=()=>exportData('geojson');
 $('occurredAt').onchange=checkDuplicates;
 document.querySelectorAll('[data-close-drawer]').forEach(x=>x.onclick=()=>$('detailDrawer').classList.add('hidden'));
 init();
