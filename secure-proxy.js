@@ -77,6 +77,7 @@ function proxyRaw(req, res) {
         const scripts = [];
         if (!html.includes('/privacy-ui.js')) scripts.push('  <script src="/privacy-ui.js"></script>');
         if (!html.includes('/ux-location.js')) scripts.push('  <script src="/ux-location.js"></script>');
+        if (!html.includes('/draft-security.js')) scripts.push('  <script src="/draft-security.js"></script>');
         if (scripts.length) html = html.replace('</body>', `${scripts.join('\n')}\n</body>`);
         const body = Buffer.from(html);
         const headers = { ...upstreamRes.headers, 'content-length': body.length, 'cache-control': 'no-store' };
