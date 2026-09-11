@@ -5,6 +5,7 @@ const { spawn } = require('child_process');
 const PUBLIC_PORT = Number(process.env.PORT || 3000);
 const INTERNAL_PORT = Number(process.env.INTERNAL_APP_PORT || 3001);
 const ADMIN_CODE = process.env.ADMIN_CODE || '';
+const PUBLIC_MAP_SALT = process.env.PUBLIC_MAP_SALT || ADMIN_CODE || 'durham-coast-public-map';
 
 function clean(v, max = 500) {
   return v == null ? '' : String(v).trim().slice(0, max);
@@ -29,12 +30,29 @@ function isAdmin(req) {
   return safeEqual(suppliedSig, expectedSig);
 }
 
-function generalisePublicCoordinate(v) {
-  const n = Number(v);
-  // Public map locations are snapped to a coarse 0.02 degree grid.
-  // Around County Durham that is roughly 1.2 km east-west and 2.2 km north-south.
-  // The exact stored coordinate is never returned to a non-admin browser.
-  return Number.isFinite(n) ? Math.round(n * 50) / 50 : null;
+function generalisePublicLocation(row) {
+  const lat = Number(row.latitude);
+  const lon = Number(row.longitude);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+
+  // Public map symbols are deliberately moved several kilometres away from
+  // the submitted point. A server-only salt makes the displacement stable for
+  // users but prevents the browser from receiving enough information to work
+  // backwards to the stored coordinate. The displaced output is then rounded
+  // again so it is not presented with false precision.
+  const identity = `${row.id || row.incident_ref || ''}|${lat.toFixed(6)}|${lon.toFixed(6)}`;
+  const digest = crypto.createHmac('sha256', PUBLIC_MAP_SALT).update(identity).digest();
+  const angle = (digest.readUInt32BE(0) / 0x100000000) * Math.PI * 2;
+  const distanceM = 2800 + (digest.readUInt32BE(4) / 0x100000000) * 1800; // 2.8-4.6 km
+  const earthRadiusM = 6371000;
+  const latRad = lat * Math.PI / 180;
+  const displacedLat = lat + (distanceM * Math.cos(angle) / earthRadiusM) * (180 / Math.PI);
+  const displacedLon = lon + (distanceM * Math.sin(angle) / (earthRadiusM * Math.max(0.2, Math.cos(latRad)))) * (180 / Math.PI);
+
+  return {
+    latitude: Math.round(displacedLat * 200) / 200,
+    longitude: Math.round(displacedLon * 200) / 200
+  };
 }
 
 function sendJson(res, status, payload) {
@@ -120,15 +138,18 @@ function handlePublicIncidentList(req, res) {
           return Number.isFinite(t) && now - t <= 30 * 86400000;
         }).length
       };
-      const incidents = rows.map(r => ({
-        category: clean(r.category, 120) || 'Incident',
-        latitude: generalisePublicCoordinate(r.latitude),
-        longitude: generalisePublicCoordinate(r.longitude)
-      })).filter(r => r.latitude != null && r.longitude != null);
+      const incidents = rows.map(r => {
+        const publicLocation = generalisePublicLocation(r);
+        return publicLocation ? {
+          category: clean(r.category, 120) || 'Incident',
+          latitude: publicLocation.latitude,
+          longitude: publicLocation.longitude
+        } : null;
+      }).filter(Boolean);
       return sendJson(res, 200, {
         restricted: true,
-        location_generalisation: 'broad-area-only',
-        public_location_radius_m: 1300,
+        location_generalisation: 'deliberately-displaced-broad-area',
+        public_location_radius_m: 5000,
         summary,
         incidents
       });
