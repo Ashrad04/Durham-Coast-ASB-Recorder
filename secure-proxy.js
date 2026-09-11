@@ -29,9 +29,12 @@ function isAdmin(req) {
   return safeEqual(suppliedSig, expectedSig);
 }
 
-function roundCoordinate(v) {
+function generalisePublicCoordinate(v) {
   const n = Number(v);
-  return Number.isFinite(n) ? Math.round(n * 1000) / 1000 : null;
+  // Public map locations are snapped to a coarse 0.01° grid rather than
+  // returning the stored incident point. Around County Durham this means
+  // possible public marker positions are spaced roughly 0.6-1.1 km apart.
+  return Number.isFinite(n) ? Math.round(n * 100) / 100 : null;
 }
 
 function sendJson(res, status, payload) {
@@ -78,6 +81,7 @@ function proxyRaw(req, res) {
         if (!html.includes('/privacy-ui.js')) scripts.push('  <script src="/privacy-ui.js"></script>');
         if (!html.includes('/ux-location.js')) scripts.push('  <script src="/ux-location.js"></script>');
         if (!html.includes('/draft-security.js')) scripts.push('  <script src="/draft-security.js"></script>');
+        if (!html.includes('/home-link.js')) scripts.push('  <script src="/home-link.js"></script>');
         if (scripts.length) html = html.replace('</body>', `${scripts.join('\n')}\n</body>`);
         const body = Buffer.from(html);
         const headers = { ...upstreamRes.headers, 'content-length': body.length, 'cache-control': 'no-store' };
@@ -118,10 +122,15 @@ function handlePublicIncidentList(req, res) {
       const incidents = rows.map(r => ({
         category: clean(r.category, 120) || 'Incident',
         site: clean(r.site, 120),
-        latitude: roundCoordinate(r.latitude),
-        longitude: roundCoordinate(r.longitude)
+        latitude: generalisePublicCoordinate(r.latitude),
+        longitude: generalisePublicCoordinate(r.longitude)
       })).filter(r => r.latitude != null && r.longitude != null);
-      return sendJson(res, 200, { restricted: true, summary, incidents });
+      return sendJson(res, 200, {
+        restricted: true,
+        location_generalisation: 'coarse-grid',
+        summary,
+        incidents
+      });
     } catch {
       return sendJson(res, 502, { error: 'Could not prepare restricted incident summary.' });
     }
