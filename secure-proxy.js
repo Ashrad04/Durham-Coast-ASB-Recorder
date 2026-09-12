@@ -35,15 +35,10 @@ function generalisePublicLocation(row) {
   const lon = Number(row.longitude);
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
 
-  // Public map symbols are deliberately moved several kilometres away from
-  // the submitted point. A server-only salt makes the displacement stable for
-  // users but prevents the browser from receiving enough information to work
-  // backwards to the stored coordinate. The displaced output is then rounded
-  // again so it is not presented with false precision.
   const identity = `${row.id || row.incident_ref || ''}|${lat.toFixed(6)}|${lon.toFixed(6)}`;
   const digest = crypto.createHmac('sha256', PUBLIC_MAP_SALT).update(identity).digest();
   const angle = (digest.readUInt32BE(0) / 0x100000000) * Math.PI * 2;
-  const distanceM = 2800 + (digest.readUInt32BE(4) / 0x100000000) * 1800; // 2.8-4.6 km
+  const distanceM = 2800 + (digest.readUInt32BE(4) / 0x100000000) * 1800;
   const earthRadiusM = 6371000;
   const latRad = lat * Math.PI / 180;
   const displacedLat = lat + (distanceM * Math.cos(angle) / earthRadiusM) * (180 / Math.PI);
@@ -95,12 +90,16 @@ function proxyRaw(req, res) {
       upstreamRes.on('data', chunk => chunks.push(chunk));
       upstreamRes.on('end', () => {
         let html = Buffer.concat(chunks).toString('utf8');
+        if (!html.includes('rel="manifest"')) {
+          html = html.replace('</head>', '  <link rel="manifest" href="/manifest.webmanifest">\n  <link rel="icon" href="/app-icon.svg" type="image/svg+xml">\n  <meta name="apple-mobile-web-app-capable" content="yes">\n  <meta name="apple-mobile-web-app-status-bar-style" content="default">\n  <meta name="apple-mobile-web-app-title" content="Incident Hub">\n</head>');
+        }
         const scripts = [];
         if (!html.includes('/privacy-ui.js')) scripts.push('  <script src="/privacy-ui.js"></script>');
         if (!html.includes('/ux-location.js')) scripts.push('  <script src="/ux-location.js"></script>');
         if (!html.includes('/draft-security.js')) scripts.push('  <script src="/draft-security.js"></script>');
         if (!html.includes('/home-link.js')) scripts.push('  <script src="/home-link.js"></script>');
         if (!html.includes('/severity-privacy-fix.js')) scripts.push('  <script src="/severity-privacy-fix.js"></script>');
+        if (!html.includes('/pwa.js')) scripts.push('  <script src="/pwa.js"></script>');
         if (scripts.length) html = html.replace('</body>', `${scripts.join('\n')}\n</body>`);
         const body = Buffer.from(html);
         const headers = { ...upstreamRes.headers, 'content-length': body.length, 'cache-control': 'no-store' };
