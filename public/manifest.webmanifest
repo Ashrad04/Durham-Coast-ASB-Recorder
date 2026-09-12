@@ -1,0 +1,36 @@
+{
+  "id": "/",
+  "name": "Durham Coast Incident Hub",
+  "short_name": "Incident Hub",
+  "description": "Durham Coast shared incident logging and mapping hub.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone"],
+  "background_color": "#f3f7f5",
+  "theme_color": "#163a34",
+  "orientation": "any",
+  "categories": ["business", "utilities"],
+  "icons": [
+    {
+      "src": "/app-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Log incident",
+      "short_name": "Log",
+      "url": "/#log",
+      "icons": [{ "src": "/app-icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+    },
+    {
+      "name": "Incident map",
+      "short_name": "Map",
+      "url": "/#records",
+      "icons": [{ "src": "/app-icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+    }
+  ]
+}
