@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Durham Coast Incident Hub</title>
+  <desc id="desc">DC monogram with a coastline wave</desc>
+  <rect width="512" height="512" rx="112" fill="#163a34"/>
+  <circle cx="256" cy="238" r="154" fill="#f3f7f5" opacity="0.08"/>
+  <path d="M80 354c67-41 124-48 180-21 54 26 103 23 172-18v58c-73 38-136 42-198 13-52-24-95-19-154 17z" fill="#b8d8cc"/>
+  <text x="256" y="286" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="184" font-weight="800" fill="#ffffff" letter-spacing="-14">DC</text>
+</svg>
