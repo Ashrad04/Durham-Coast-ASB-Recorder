@@ -4,6 +4,7 @@
   const baseShowAdminPanel = showAdminPanel;
   const baseExitAdmin = exitAdmin;
   const baseLogin = login;
+  const baseRenderRecords = renderRecords;
   const ADMIN_IDLE_MS = 30 * 60 * 1000;
   let lastAdminActivity = Date.now();
 
@@ -77,16 +78,16 @@
 
   function shortenNotices() {
     const mapNotice = document.getElementById('publicMapPrivacyNotice');
-    if (mapNotice) mapNotice.innerHTML = '<strong>Map restricted for privacy</strong>';
+    if (mapNotice && mapNotice.textContent.trim() !== 'Map restricted for privacy') mapNotice.innerHTML = '<strong>Map restricted for privacy</strong>';
 
     const recordsIntro = document.querySelector('#view-records .page-heading p');
-    if (recordsIntro && !adminMode) recordsIntro.textContent = 'Privacy-restricted incident overview.';
+    if (recordsIntro && !adminMode && recordsIntro.textContent !== 'Privacy-restricted incident overview.') recordsIntro.textContent = 'Privacy-restricted incident overview.';
 
     const restrictedList = document.querySelector('#recordsList .empty-state');
-    if (restrictedList && !adminMode) restrictedList.innerHTML = '<strong>Ticket details restricted to administrators.</strong>';
+    if (restrictedList && !adminMode && restrictedList.textContent.trim() !== 'Ticket details restricted to administrators.') restrictedList.innerHTML = '<strong>Ticket details restricted to administrators.</strong>';
 
     const sensitive = document.querySelector('.sensitive-box p');
-    if (sensitive) sensitive.textContent = 'Only add personal details where necessary.';
+    if (sensitive && sensitive.textContent !== 'Only add personal details where necessary.') sensitive.textContent = 'Only add personal details where necessary.';
 
     const photoGrid = document.querySelector('.photo-choice-grid');
     if (photoGrid && !document.getElementById('photoPrivacyNote')) {
@@ -111,16 +112,26 @@
     const nameInput = document.getElementById('loginName');
     const orgInput = document.getElementById('loginOrg');
     const label = nameInput?.closest('label');
+    let hint = label?.querySelector('.member-public-name-hint');
     if (label && !label.dataset.privacyAdjusted) {
       label.dataset.privacyAdjusted = '1';
       for (const node of [...label.childNodes]) {
         if (node.nodeType === Node.TEXT_NODE && node.textContent.includes('Recorder name')) node.textContent = 'Recorder name ';
       }
-      const hint = document.createElement('span');
-      hint.className = 'required-note';
+      hint = document.createElement('span');
+      hint.className = 'required-note member-public-name-hint';
       hint.textContent = '(optional for member of public)';
       label.insertBefore(hint, nameInput);
     }
+    const star = label?.querySelector('.core-star');
+    const syncNameRequirement = () => {
+      const isPublic = orgInput?.value?.trim() === 'Member of public';
+      if (star) star.classList.toggle('hidden', isPublic);
+      if (hint) hint.classList.toggle('hidden', !isPublic);
+    };
+    orgInput?.addEventListener('input', syncNameRequirement);
+    orgInput?.addEventListener('change', syncNameRequirement);
+    syncNameRequirement();
 
     login = async function() {
       const org = orgInput?.value?.trim() || '';
@@ -234,12 +245,11 @@
     if (adminMode && Date.now() - lastAdminActivity > ADMIN_IDLE_MS) exitAdmin('Administrator session ended after inactivity.');
   }, 30000);
 
-  const observer = new MutationObserver(() => {
-    shortenNotices();
-    addPrivacyLinks();
-    if (adminMode) injectGovernanceControls();
-  });
-  observer.observe(document.body, { childList: true, subtree: true });
+  renderRecords = function() {
+    const result = baseRenderRecords();
+    setTimeout(shortenNotices, 0);
+    return result;
+  };
 
   makePublicNameOptional();
   addPrivacyLinks();
