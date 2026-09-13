@@ -99,6 +99,7 @@ function proxyRaw(req, res) {
         if (!html.includes('/draft-security.js')) scripts.push('  <script src="/draft-security.js"></script>');
         if (!html.includes('/home-link.js')) scripts.push('  <script src="/home-link.js"></script>');
         if (!html.includes('/severity-privacy-fix.js')) scripts.push('  <script src="/severity-privacy-fix.js"></script>');
+        if (!html.includes('/map-controls.js')) scripts.push('  <script src="/map-controls.js"></script>');
         if (!html.includes('/pwa.js')) scripts.push('  <script src="/pwa.js"></script>');
         if (scripts.length) html = html.replace('</body>', `${scripts.join('\n')}\n</body>`);
         const body = Buffer.from(html);
@@ -128,19 +129,22 @@ function handlePublicIncidentList(req, res) {
       const data = JSON.parse(body.toString('utf8'));
       const rows = Array.isArray(data.incidents) ? data.incidents : [];
       const now = Date.now();
+      const cutoff = now - 30 * 86400000;
+      const mapRows = rows.filter(r => {
+        const t = new Date(r.occurred_at).getTime();
+        return Number.isFinite(t) && t >= cutoff && t <= now + 86400000;
+      });
       const summary = {
         total: rows.length,
         open: rows.filter(r => r.status !== 'Closed').length,
         high: rows.filter(r => r.severity === 'High' || r.severity === 'Critical').length,
-        last30: rows.filter(r => {
-          const t = new Date(r.occurred_at).getTime();
-          return Number.isFinite(t) && now - t <= 30 * 86400000;
-        }).length
+        last30: mapRows.length
       };
-      const incidents = rows.map(r => {
+      const incidents = mapRows.map(r => {
         const publicLocation = generalisePublicLocation(r);
         return publicLocation ? {
           category: clean(r.category, 120) || 'Incident',
+          high_priority: r.severity === 'High' || r.severity === 'Critical',
           latitude: publicLocation.latitude,
           longitude: publicLocation.longitude
         } : null;
@@ -149,6 +153,7 @@ function handlePublicIncidentList(req, res) {
         restricted: true,
         location_generalisation: 'deliberately-displaced-broad-area',
         public_location_radius_m: 5000,
+        map_window_days: 30,
         summary,
         incidents
       });
