@@ -1,5 +1,5 @@
-const CACHE='dca-pwa-shell-v2';
-const SHELL=['/offline.html','/styles.css','/app.js','/privacy-ui.js','/ux-location.js','/draft-security.js','/home-link.js','/severity-privacy-fix.js','/map-controls.js','/compliance-ui.js','/pwa.js','/manifest.webmanifest','/app-icon.svg'];
+const CACHE='dca-pwa-shell-v3';
+const SHELL=['/offline.html','/styles.css','/app.js','/privacy-ui.js','/ux-location.js','/draft-security.js','/home-link.js','/severity-privacy-fix.js','/map-controls.js','/visual-polish.js','/compliance-ui.js','/pwa.js','/manifest.webmanifest','/app-icon.svg'];
 self.addEventListener('install',event=>{event.waitUntil(caches.open(CACHE).then(c=>c.addAll(SHELL)).then(()=>self.skipWaiting()))});
 self.addEventListener('activate',event=>{event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim()))});
 self.addEventListener('fetch',event=>{
