@@ -25,6 +25,7 @@ jobs:
       - run: node --check public/home-link.js
       - run: node --check public/severity-privacy-fix.js
       - run: node --check public/map-controls.js
+      - run: node --check public/visual-polish.js
       - run: node --check public/compliance-ui.js
       - run: node --check public/pwa.js
       - run: node --check public/sw.js
