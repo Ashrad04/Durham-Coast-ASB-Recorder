@@ -100,6 +100,7 @@ function proxyRaw(req, res) {
         if (!html.includes('/home-link.js')) scripts.push('  <script src="/home-link.js"></script>');
         if (!html.includes('/severity-privacy-fix.js')) scripts.push('  <script src="/severity-privacy-fix.js"></script>');
         if (!html.includes('/map-controls.js')) scripts.push('  <script src="/map-controls.js"></script>');
+        if (!html.includes('/visual-polish.js')) scripts.push('  <script src="/visual-polish.js"></script>');
         if (!html.includes('/pwa.js')) scripts.push('  <script src="/pwa.js"></script>');
         if (scripts.length) html = html.replace('</body>', `${scripts.join('\n')}\n</body>`);
         const body = Buffer.from(html);
