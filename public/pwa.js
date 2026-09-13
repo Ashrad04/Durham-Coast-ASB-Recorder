@@ -9,6 +9,7 @@
     .install-app-btn:hover{background:rgba(255,255,255,.14)}
     .pwa-toast{position:fixed;left:50%;bottom:86px;transform:translateX(-50%);z-index:3200;width:min(420px,calc(100% - 28px));background:#17302b;color:#fff;padding:14px 16px;border-radius:14px;box-shadow:0 16px 45px rgba(0,0,0,.24);font-size:13px;line-height:1.45}
     .pwa-toast button{margin-top:10px;border:0;border-radius:9px;padding:8px 11px;font-weight:800;background:#fff;color:#17302b}
+    .empty-state-icon{display:none!important}
   `;
   document.head.appendChild(style);
 
